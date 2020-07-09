@@ -94,10 +94,7 @@ func setOrderItemsValue(filter bson.M, client *mongo.Client, orderItems *[]Order
 	var orderItem OrderItem
 
 	orderItemsCollection := getMongoCollection("order-items", dbName, client)
-	cursor, err := orderItemsCollection.Find(context.TODO(), filter)
-	if err != nil {
-		log.Fatal("collection.Find ERROR:", err)
-	}
+	cursor := getCollectionCursor(orderItemsCollection, filter)
 
 	for cursor.Next(context.TODO()) {
 		err := cursor.Decode(&orderItem)
@@ -111,7 +108,6 @@ func setOrderItemsValue(filter bson.M, client *mongo.Client, orderItems *[]Order
 		// For each order item get the delivery details
 		deliveryFilter := bson.M{"order_item_id": bson.M{"$eq": orderItem.ID}}
 		setDeliveriesValues(deliveryFilter, client, &orderItem, priceUnit)
-		log.Println(orderItem.Deliveries)
 
 		*orderItems = append(*orderItems, orderItem)
 	}
@@ -122,10 +118,8 @@ func setDeliveriesValues(filter bson.M, client *mongo.Client, orderItem *OrderIt
 	var delivery Delivery
 
 	deliveryCollection := getMongoCollection("deliveries", dbName, client)
-	cursor, err := deliveryCollection.Find(context.TODO(), filter)
-	if err != nil {
-		log.Fatal("collection.Find ERROR:", err)
-	}
+	cursor := getCollectionCursor(deliveryCollection, filter)
+
 	for cursor.Next(context.TODO()) {
 		err := cursor.Decode(&delivery)
 		if err != nil {
@@ -141,10 +135,7 @@ func setDeliveriesValues(filter bson.M, client *mongo.Client, orderItem *OrderIt
 }
 
 func setDecodedValue(filter bson.M, collection *mongo.Collection, structObj interface{}) interface{} {
-	cursor, err := collection.Find(context.TODO(), filter)
-	if err != nil {
-		log.Fatal("collection.Find ERROR:", err)
-	}
+	cursor := getCollectionCursor(collection, filter)
 	for cursor.Next(context.TODO()) {
 		err := cursor.Decode(structObj)
 		if err != nil {
