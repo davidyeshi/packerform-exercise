@@ -17,6 +17,7 @@
 ### Running backend go server
 - cd to ./backend-golang
 - command: go run main.go mongohelper.go structs.go
+- the server will run on http://localhost:8000
 
 **Note: To change mongo-server port in backend, go to mongoHelper.go/getMongoClient()
 
@@ -25,5 +26,6 @@ So once backend is running
 - cd to ./frontend-react
 - do a npm install
 - npm start
+- the server will run on http://localhost:3000
 
 #### Cheers!
