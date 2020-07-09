@@ -14,6 +14,7 @@ import (
 
 // Init orders var as a slice Order struct
 var orders []Order
+var dbName = "packerform-db"
 
 // Route Handler for returning Orders
 func getOrders(w http.ResponseWriter, r *http.Request) {
@@ -45,14 +46,11 @@ func main() {
 
 func prepareOrdersData() []Order {
 	var returnOrders []Order
-	dbName := "packerform-db"
 	mongoClient := getMongoClient()
 
 	ordersCollection := getMongoCollection("orders", dbName, mongoClient)
 	customersCollection := getMongoCollection("customers", dbName, mongoClient)
 	companiesCollection := getMongoCollection("company", dbName, mongoClient)
-	orderItemsCollection := getMongoCollection("order-items", dbName, mongoClient)
-	deliveryCollection := getMongoCollection("deliveries", dbName, mongoClient)
 
 	// set the orders
 	orderCursor := getCollectionCursor(ordersCollection, bson.M{})
@@ -67,14 +65,10 @@ func prepareOrdersData() []Order {
 
 	// Loop through orders
 	for idx := range returnOrders {
-		custID := returnOrders[idx].CustomerID
-		orderID := returnOrders[idx].ID
-
-		var customer Customer
-		var orderItems []OrderItem
-		var orderItem OrderItem
 
 		// Set the customer
+		var customer Customer
+		custID := returnOrders[idx].CustomerID
 		customerfilter := bson.M{"user_id": bson.M{"$eq": custID}}
 		setDecodedValue(customerfilter, customersCollection, &customer)
 
@@ -83,52 +77,67 @@ func prepareOrdersData() []Order {
 		setDecodedValue(companyFilter, companiesCollection, &customer.Company)
 
 		// Set the order items
+		var orderItems []OrderItem
+		orderID := returnOrders[idx].ID
 		orderItemsFilter := bson.M{"order_id": bson.M{"$eq": orderID}}
-		orderItemsCursor, err := orderItemsCollection.Find(context.TODO(), orderItemsFilter)
-		if err != nil {
-			log.Fatal("collection.Find ERROR:", err)
-		}
-
-		for orderItemsCursor.Next(context.TODO()) {
-			err := orderItemsCursor.Decode(&orderItem)
-			if err != nil {
-				log.Fatal("collection.Find ERROR:", err)
-			}
-			itemQuantity, _ := strconv.ParseFloat(orderItem.Quantity, 64)
-			priceUnit, _ := strconv.ParseFloat(orderItem.PricePerUnit, 64)
-
-			orderItem.OrderItemAmount = itemQuantity * priceUnit
-
-			// For each order item get the delivery details
-			var deliveries []Delivery
-			var delivery Delivery
-			// Set the deliveries
-			deliveryFilter := bson.M{"order_item_id": bson.M{"$eq": orderItem.ID}}
-			deliveryCursor, err := deliveryCollection.Find(context.TODO(), deliveryFilter)
-			if err != nil {
-				log.Fatal("collection.Find ERROR:", err)
-			}
-			for deliveryCursor.Next(context.TODO()) {
-				err := deliveryCursor.Decode(&delivery)
-				if err != nil {
-					log.Fatal("collection.Find ERROR:", err)
-				}
-				deliveredQuanity, _ := strconv.ParseFloat(delivery.DeliveredQuantity, 64)
-				delivery.DeliveredAmount = deliveredQuanity * priceUnit
-				deliveries = append(deliveries, delivery)
-			}
-
-			orderItem.Deliveries = deliveries
-			orderItems = append(orderItems, orderItem)
-		}
+		setOrderItemsValue(orderItemsFilter, mongoClient, &orderItems)
 
 		// Assign the customer to the order
 		returnOrders[idx].OrderItems = orderItems
 		returnOrders[idx].Customer = customer
-
 	}
 
 	return returnOrders
+}
+
+func setOrderItemsValue(filter bson.M, client *mongo.Client, orderItems *[]OrderItem) {
+	var orderItem OrderItem
+
+	orderItemsCollection := getMongoCollection("order-items", dbName, client)
+	cursor, err := orderItemsCollection.Find(context.TODO(), filter)
+	if err != nil {
+		log.Fatal("collection.Find ERROR:", err)
+	}
+
+	for cursor.Next(context.TODO()) {
+		err := cursor.Decode(&orderItem)
+		if err != nil {
+			log.Fatal("collection.Find ERROR:", err)
+		}
+		itemQuantity, _ := strconv.ParseFloat(orderItem.Quantity, 64)
+		priceUnit, _ := strconv.ParseFloat(orderItem.PricePerUnit, 64)
+		orderItem.OrderItemAmount = itemQuantity * priceUnit
+
+		// For each order item get the delivery details
+		deliveryFilter := bson.M{"order_item_id": bson.M{"$eq": orderItem.ID}}
+		setDeliveriesValues(deliveryFilter, client, &orderItem, priceUnit)
+		log.Println(orderItem.Deliveries)
+
+		*orderItems = append(*orderItems, orderItem)
+	}
+}
+
+func setDeliveriesValues(filter bson.M, client *mongo.Client, orderItem *OrderItem, priceUnit float64) {
+	var deliveries []Delivery
+	var delivery Delivery
+
+	deliveryCollection := getMongoCollection("deliveries", dbName, client)
+	cursor, err := deliveryCollection.Find(context.TODO(), filter)
+	if err != nil {
+		log.Fatal("collection.Find ERROR:", err)
+	}
+	for cursor.Next(context.TODO()) {
+		err := cursor.Decode(&delivery)
+		if err != nil {
+			log.Fatal("collection.Find ERROR:", err)
+		}
+		deliveredQuanity, _ := strconv.ParseFloat(delivery.DeliveredQuantity, 64)
+		delivery.DeliveredAmount = deliveredQuanity * priceUnit
+		deliveries = append(deliveries, delivery)
+
+	}
+
+	orderItem.Deliveries = deliveries
 }
 
 func setDecodedValue(filter bson.M, collection *mongo.Collection, structObj interface{}) interface{} {
